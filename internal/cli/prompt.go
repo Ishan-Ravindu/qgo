@@ -48,60 +48,68 @@ func RunPrompt(db *sql.DB, currentConnection config.Connection) {
 
 func executor(db *sql.DB, input string) {
 	input = strings.TrimSpace(input)
-	if input == "exit" {
-		fmt.Println("Goodbye!")
-		os.Exit(0)
-	}
 
-	rows, err := db.Query(input)
-	if err != nil {
-		fmt.Println("Error executing query:", err)
-		return
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		fmt.Println("Error getting columns:", err)
-		return
-	}
-
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader(cols)
-
-	rawResult := make([][]byte, len(cols))
-	dest := make([]interface{}, len(cols))
-	for i := range rawResult {
-		dest[i] = &rawResult[i]
-	}
-
-	for rows.Next() {
-		err = rows.Scan(dest...)
-		if err != nil {
-			fmt.Println("Error scanning row:", err)
-			return
+	if strings.HasPrefix(input, "/") {
+		input = strings.ToLower(input[1:])
+		if input == "exit" {
+			fmt.Println("Good bye!")
+			os.Exit(0)
+		} else {
+			fmt.Println("command not found")
 		}
-
-		row := make([]string, len(cols))
-		for i, raw := range rawResult {
-			if raw == nil {
-				row[i] = "NULL"
-			} else {
-				row[i] = string(raw)
+	} else {
+		words := strings.Fields(strings.ToLower(input))
+		if len(words) > 0 && words[0] == "select" {
+			rows, err := db.Query(input)
+			if err != nil {
+				fmt.Println("Error executing query:", err)
+				return
 			}
-		}
-		table.Append(row)
-	}
+			defer rows.Close()
 
-	table.Render()
+			cols, err := rows.Columns()
+			if err != nil {
+				fmt.Println("Error getting columns:", err)
+				return
+			}
+
+			table := tablewriter.NewWriter(os.Stdout)
+			table.SetHeader(cols)
+
+			rawResult := make([][]byte, len(cols))
+			dest := make([]interface{}, len(cols))
+			for i := range rawResult {
+				dest[i] = &rawResult[i]
+			}
+
+			for rows.Next() {
+				err = rows.Scan(dest...)
+				if err != nil {
+					fmt.Println("Error scanning row:", err)
+					return
+				}
+
+				row := make([]string, len(cols))
+				for i, raw := range rawResult {
+					if raw == nil {
+						row[i] = "NULL"
+					} else {
+						row[i] = string(raw)
+					}
+				}
+				table.Append(row)
+			}
+
+			table.Render()
+		} else {
+			fmt.Println("Qgo only supports valid SELECT statements.")
+		}
+	}
 }
 
 func completer(d prompt.Document, tables []string, columns map[string][]string) []prompt.Suggest {
 	suggestions := []prompt.Suggest{
 		{Text: "SELECT", Description: "Retrieve data from the database"},
-		{Text: "INSERT", Description: "Insert new data into a table"},
-		{Text: "UPDATE", Description: "Modify existing data in a table"},
-		{Text: "DELETE", Description: "Remove data from a table"},
 		{Text: "FROM", Description: "Specify the table to query"},
 		{Text: "WHERE", Description: "Filter the results"},
 		{Text: "ORDER BY", Description: "Sort the results"},
