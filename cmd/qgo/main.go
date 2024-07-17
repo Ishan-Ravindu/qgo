@@ -55,5 +55,5 @@ func main() {
 
 	fmt.Printf("Connected to %s database. Type your SQL queries or 'exit' to quit.\n", cfg.CurrentConnection.Type)
 
-	cli.RunPrompt(db, cfg.CurrentConnection.Type)
+	cli.RunPrompt(db, cfg.CurrentConnection)
 }

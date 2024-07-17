@@ -6,14 +6,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Ishan-Ravindu/qgo/internal/config"
 	"github.com/Ishan-Ravindu/qgo/internal/database"
 
 	"github.com/c-bata/go-prompt"
 	"github.com/olekukonko/tablewriter"
 )
 
-func RunPrompt(db *sql.DB, dbType string) {
-	tables, err := database.FetchTables(db, dbType)
+func RunPrompt(db *sql.DB, currentConnection config.Connection) {
+	tables, err := database.FetchTables(db, currentConnection.Type)
 	if err != nil {
 		fmt.Println("Error fetching tables:", err)
 		return
@@ -21,7 +22,7 @@ func RunPrompt(db *sql.DB, dbType string) {
 
 	columns := make(map[string][]string)
 	for _, table := range tables {
-		cols, err := database.FetchColumns(db, dbType, table)
+		cols, err := database.FetchColumns(db, currentConnection.Type, table)
 		if err != nil {
 			fmt.Printf("Error fetching columns for table %s: %v\n", table, err)
 			continue
@@ -36,7 +37,10 @@ func RunPrompt(db *sql.DB, dbType string) {
 		func(d prompt.Document) []prompt.Suggest {
 			return completer(d, tables, columns)
 		},
-		prompt.OptionPrefix("SQL> "),
+		prompt.OptionPrefix(fmt.Sprintf("%s@%s:(%s)-> ",
+			currentConnection.User,
+			currentConnection.Host,
+			currentConnection.Database)),
 		prompt.OptionTitle("Qgo CLI"),
 	)
 	p.Run()
