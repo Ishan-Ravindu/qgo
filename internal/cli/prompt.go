@@ -50,61 +50,74 @@ func executor(db *sql.DB, input string) {
 	input = strings.TrimSpace(input)
 
 	if strings.HasPrefix(input, "/") {
-		input = strings.ToLower(input[1:])
-		if input == "exit" {
-			fmt.Println("Good bye!")
-			os.Exit(0)
-		} else {
-			fmt.Println("command not found")
-		}
-	} else {
-		words := strings.Fields(strings.ToLower(input))
-		if len(words) > 0 && words[0] == "select" {
-			rows, err := db.Query(input)
-			if err != nil {
-				fmt.Println("Error executing query:", err)
-				return
-			}
-			defer rows.Close()
-
-			cols, err := rows.Columns()
-			if err != nil {
-				fmt.Println("Error getting columns:", err)
-				return
-			}
-
-			table := tablewriter.NewWriter(os.Stdout)
-			table.SetHeader(cols)
-
-			rawResult := make([][]byte, len(cols))
-			dest := make([]interface{}, len(cols))
-			for i := range rawResult {
-				dest[i] = &rawResult[i]
-			}
-
-			for rows.Next() {
-				err = rows.Scan(dest...)
-				if err != nil {
-					fmt.Println("Error scanning row:", err)
-					return
-				}
-
-				row := make([]string, len(cols))
-				for i, raw := range rawResult {
-					if raw == nil {
-						row[i] = "NULL"
-					} else {
-						row[i] = string(raw)
-					}
-				}
-				table.Append(row)
-			}
-
-			table.Render()
-		} else {
-			fmt.Println("Qgo only supports valid SELECT statements.")
-		}
+		handleCommand(input[1:])
+		return
 	}
+
+	if !isValidSelectStatement(input) {
+		fmt.Println("Qgo only supports valid SELECT statements.")
+		return
+	}
+
+	executeSelectStatement(db, input)
+}
+
+func handleCommand(cmd string) {
+	cmd = strings.ToLower(cmd)
+	if cmd == "exit" {
+		fmt.Println("Good bye!")
+		os.Exit(0)
+	} else {
+		fmt.Println("command not found")
+	}
+}
+
+func isValidSelectStatement(input string) bool {
+	words := strings.Fields(strings.ToLower(input))
+	return len(words) > 0 && words[0] == "select"
+}
+
+func executeSelectStatement(db *sql.DB, query string) {
+	rows, err := db.Query(query)
+	if err != nil {
+		fmt.Println("Error executing query:", err)
+		return
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		fmt.Println("Error getting columns:", err)
+		return
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader(cols)
+
+	rawResult := make([][]byte, len(cols))
+	dest := make([]interface{}, len(cols))
+	for i := range rawResult {
+		dest[i] = &rawResult[i]
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(dest...); err != nil {
+			fmt.Println("Error scanning row:", err)
+			return
+		}
+
+		row := make([]string, len(cols))
+		for i, raw := range rawResult {
+			if raw == nil {
+				row[i] = "NULL"
+			} else {
+				row[i] = string(raw)
+			}
+		}
+		table.Append(row)
+	}
+
+	table.Render()
 }
 
 func completer(d prompt.Document, tables []string, columns map[string][]string) []prompt.Suggest {
