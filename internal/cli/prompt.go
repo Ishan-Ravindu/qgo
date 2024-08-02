@@ -53,7 +53,8 @@ func executor(db *sql.DB, input string) {
 		handleCommand(input[1:])
 		return
 	}
-
+	// This tool is meant to only read database data, so avoid making any changes to the database state.
+	// TODO: Improve the validation logic.
 	if !isValidSelectStatement(input) {
 		fmt.Println("Qgo only supports valid SELECT statements.")
 		return
