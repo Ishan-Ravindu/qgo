@@ -7,6 +7,7 @@ import (
 	"github.com/Ishan-Ravindu/qgo/internal/cli"
 	"github.com/Ishan-Ravindu/qgo/internal/config"
 	"github.com/Ishan-Ravindu/qgo/internal/database"
+	"github.com/Ishan-Ravindu/qgo/pkg/dropdown"
 )
 
 func main() {
@@ -23,23 +24,35 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		fmt.Println("Choose a connection or add a new one:")
+		options := make([]dropdown.Option, len(cfg.Connections)+1)
 		for i, conn := range cfg.Connections {
-			fmt.Printf("%d. %s (%s)\n", i+1, conn.Name, conn.Type)
+			options[i] = dropdown.Option{
+				Value: fmt.Sprintf("%d", i),
+				Label: fmt.Sprintf("%s (%s)", conn.Name, conn.Type),
+			}
 		}
-		fmt.Printf("%d. Add new connection\n", len(cfg.Connections)+1)
+		options[len(cfg.Connections)] = dropdown.Option{
+			Value: fmt.Sprintf("%d", len(cfg.Connections)),
+			Label: "Add new connection",
+		}
 
-		var choice int
-		fmt.Scan(&choice)
+		selected, err := dropdown.Select("Choose a connection or add a new one:", options)
+		if err != nil {
+			fmt.Println("Error selecting connection:", err)
+			os.Exit(1)
+		}
 
-		if choice == len(cfg.Connections)+1 {
+		choice := -1
+		fmt.Sscan(selected, &choice)
+
+		if choice == len(cfg.Connections) {
 			cfg, err = config.AddNewConnection(cfg)
 			if err != nil {
 				fmt.Println("Error adding new connection:", err)
 				os.Exit(1)
 			}
-		} else if choice > 0 && choice <= len(cfg.Connections) {
-			cfg.CurrentConnection = cfg.Connections[choice-1]
+		} else if choice >= 0 && choice < len(cfg.Connections) {
+			cfg.CurrentConnection = cfg.Connections[choice]
 		} else {
 			fmt.Println("Invalid choice")
 			os.Exit(1)
@@ -53,7 +66,6 @@ func main() {
 	}
 	defer db.Close()
 
-	fmt.Printf("Connected to %s database. Type your SQL queries or 'exit' to quit.\n", cfg.CurrentConnection.Type)
-
+	fmt.Printf("Connected to %s database. Type your SQL queries or '/exit' to quit.\n", cfg.CurrentConnection.Type)
 	cli.RunPrompt(db, cfg.CurrentConnection)
 }
