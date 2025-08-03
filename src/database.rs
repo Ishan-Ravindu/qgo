@@ -17,12 +17,22 @@ impl Database {
     pub async fn connect(connection: Connection, timeout: Duration) -> Result<Self> {
         let connection_string = connection.connection_string();
         
+        // Log connection attempt (without password for security)
+        println!("Connecting to {} database at {}:{}...", 
+                 connection.db_type, connection.host, connection.port);
+        
         // Apply timeout to the connection attempt
         let connect_future = AnyPool::connect(&connection_string);
         let pool = tokio::time::timeout(timeout, connect_future)
             .await
-            .map_err(|_| QgoError::Database(sqlx::Error::PoolTimedOut))?
-            .map_err(|e| QgoError::Database(e))?;
+            .map_err(|_| {
+                eprintln!("Connection timeout after {} seconds", timeout.as_secs());
+                QgoError::Database(sqlx::Error::PoolTimedOut)
+            })?
+            .map_err(|e| {
+                eprintln!("Database connection failed: {}", e);
+                QgoError::Database(e)
+            })?;
 
         Ok(Self {
             pool,
@@ -35,33 +45,60 @@ impl Database {
     pub async fn test_connection(connection: &Connection, timeout: Duration) -> Result<()> {
         let connection_string = connection.connection_string();
         
+        println!("Testing connection to {} database at {}:{}...", 
+                 connection.db_type, connection.host, connection.port);
+        
         // Apply timeout to the connection attempt
         let connect_future = AnyPool::connect(&connection_string);
         let pool = tokio::time::timeout(timeout, connect_future)
             .await
-            .map_err(|_| QgoError::Database(sqlx::Error::PoolTimedOut))?
-            .map_err(|e| QgoError::Database(e))?;
+            .map_err(|_| {
+                eprintln!("Connection test timeout after {} seconds", timeout.as_secs());
+                QgoError::Database(sqlx::Error::PoolTimedOut)
+            })?
+            .map_err(|e| {
+                eprintln!("Database connection test failed: {}", e);
+                QgoError::Database(e)
+            })?;
 
-        let _test_conn = pool.acquire().await.map_err(|e| QgoError::Database(e))?;
+        let _test_conn = pool.acquire().await.map_err(|e| {
+            eprintln!("Failed to acquire database connection: {}", e);
+            QgoError::Database(e)
+        })?;
+        
         pool.close().await;
         
         Ok(())
     }
 
     pub async fn execute_query(&self, query: &str) -> Result<QueryResult> {
-        // Validate that it's a SELECT query for safety
-        let trimmed_query = query.trim().to_lowercase();
-        if !trimmed_query.starts_with("select") && !trimmed_query.starts_with("show") 
-            && !trimmed_query.starts_with("describe") && !trimmed_query.starts_with("explain") {
+        let trimmed_query = query.trim();
+        
+        if trimmed_query.is_empty() {
+            return Err(QgoError::InvalidQuery("Query cannot be empty".to_string()).into());
+        }
+        
+        // Check if query is safe (read-only operations)
+        let lower_query = trimmed_query.to_lowercase();
+        let allowed_prefixes = ["select", "show", "describe", "explain", "with"];
+        
+        let is_allowed = allowed_prefixes.iter().any(|prefix| {
+            lower_query.starts_with(prefix)
+        });
+        
+        if !is_allowed {
             return Err(QgoError::InvalidQuery(
-                "Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are allowed".to_string()
+                "Only SELECT, SHOW, DESCRIBE, EXPLAIN, and WITH queries are allowed".to_string()
             ).into());
         }
 
         let rows = sqlx::query(query)
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| QgoError::Database(e))?;
+            .map_err(|e| {
+                eprintln!("Query execution failed: {}", e);
+                QgoError::Database(e)
+            })?;
 
         if rows.is_empty() {
             return Ok(QueryResult {

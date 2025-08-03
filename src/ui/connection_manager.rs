@@ -89,15 +89,23 @@ impl ConnectionManager {
 
         // If password is empty, prompt for it
         if connection.password.is_empty() {
+            println!("Password is required for connection '{}'", connection.name);
             connection.password = prompt_password("Enter password: ")?;
         }
 
         let timeout = Duration::from_secs(self.config.settings.query_timeout_seconds);
-        let database = Database::connect(connection, timeout).await?;
-
-        println!("{}", style("Connected successfully!").green());
-        self.current_database = Some(database);
-        Ok(())
+        
+        match Database::connect(connection, timeout).await {
+            Ok(database) => {
+                println!("{}", style("Connected successfully!").green());
+                self.current_database = Some(database);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("{}", style(format!("Failed to connect: {}", e)).red());
+                Err(e)
+            }
+        }
     }
 
     async fn add_new_connection(&mut self) -> Result<()> {

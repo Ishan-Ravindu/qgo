@@ -14,7 +14,7 @@ pub struct Connection {
     pub host: String,
     pub port: u16,
     pub username: String,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default)]
     pub password: String,
     pub database: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -75,8 +75,29 @@ impl Config {
         }
 
         let content = fs::read_to_string(&config_path).await?;
-        let config: Config = serde_json::from_str(&content)?;
-        Ok(config)
+        
+        // Try to parse the config, handling legacy format
+        match serde_json::from_str::<Config>(&content) {
+            Ok(config) => Ok(config),
+            Err(e) => {
+                eprintln!("Warning: Failed to parse existing config: {}", e);
+                eprintln!("Creating a backup and using default configuration...");
+                
+                // Backup the old config
+                let backup_path = config_path.with_extension("json.backup");
+                if let Err(backup_err) = fs::copy(&config_path, &backup_path).await {
+                    eprintln!("Warning: Failed to create backup: {}", backup_err);
+                }
+                
+                // Create new default config
+                let config = Self {
+                    connections: Vec::new(),
+                    settings: Settings::default(),
+                };
+                config.save().await?;
+                Ok(config)
+            }
+        }
     }
 
     pub async fn save(&self) -> Result<()> {
@@ -156,17 +177,30 @@ impl Connection {
             DatabaseType::MySQL => {
                 format!(
                     "mysql://{}:{}@{}:{}/{}",
-                    self.username, self.password, self.host, self.port, self.database
+                    urlencoding::encode(&self.username),
+                    urlencoding::encode(&self.password), 
+                    self.host, 
+                    self.port, 
+                    urlencoding::encode(&self.database)
                 )
             }
             DatabaseType::PostgreSQL => {
                 format!(
                     "postgresql://{}:{}@{}:{}/{}",
-                    self.username, self.password, self.host, self.port, self.database
+                    urlencoding::encode(&self.username),
+                    urlencoding::encode(&self.password),
+                    self.host,
+                    self.port,
+                    urlencoding::encode(&self.database)
                 )
             }
             DatabaseType::SQLite => {
-                format!("sqlite://{}", self.database)
+                // For SQLite, the database field should be the file path
+                if self.database.starts_with("/") || self.database.contains(":") {
+                    format!("sqlite://{}", self.database)
+                } else {
+                    format!("sqlite://./{}", self.database)
+                }
             }
         }
     }

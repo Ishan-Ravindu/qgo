@@ -134,7 +134,9 @@ pub async fn run_interactive_session(connection_manager: &mut ConnectionManager)
     let _ = rl.save_history(&history_file);
 
     Ok(())
-}async fn handle_input(
+}
+
+async fn handle_input(
     input: &str,
     database: &mut crate::database::Database,
     max_rows_display: Option<usize>,
